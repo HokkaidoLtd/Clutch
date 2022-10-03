@@ -25,3 +25,6 @@ cmake-build-debug
 .DS_Store?
 .Trashes
 .swp
+
+.build
+.swiftpm
