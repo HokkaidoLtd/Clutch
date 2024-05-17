@@ -13,7 +13,7 @@ struct Device {
 		let header = _dyld_get_image_header(0)
 		return header!.pointee.cputype
 	}
-	
+
 	static var cpusubtype: cpu_subtype_t {
 		let header = _dyld_get_image_header(0)
 		return header!.pointee.cpusubtype

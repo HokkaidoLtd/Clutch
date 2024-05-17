@@ -17,9 +17,9 @@ let cpusubtypes = [
 	CPU_SUBTYPE_ARM_V7: "armv7",
 	CPU_SUBTYPE_ARM_V7S: "armv7s",
 	CPU_SUBTYPE_ARM_V7K: "armv7k",
-	
+
 	CPU_SUBTYPE_ARM_V8: "armv8",
-	
+
 	CPU_SUBTYPE_ARM64_ALL: "arm64",
 	CPU_SUBTYPE_ARM64_V8: "arm64v8",
 	CPU_SUBTYPE_ARM64E: "arm64e"

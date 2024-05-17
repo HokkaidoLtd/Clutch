@@ -1,6 +1,6 @@
 disabled_rules:
   - type_name
   - identifier_name
-  - trailing_whitespace
+  - todo
+  - nesting
   - line_length
-  - function_body_length

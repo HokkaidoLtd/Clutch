@@ -17,12 +17,9 @@ extension LSBundleProxy {
 extension LSApplicationProxy {
 	var frameworksURL: URL? {
 		let url = bundleURL.appendingPathComponent("Frameworks")
-		if FileManager.default.isDirectory(url: url) {
-			return url
-		}
-		return nil
+		return FileManager.default.isDirectory(url: url) ? url : nil
 	}
-	
+
 	var frameworks: [URL] {
 		guard
 			let url = frameworksURL,
@@ -30,15 +27,7 @@ extension LSApplicationProxy {
 		else {
 			return []
 		}
-		
+
 		return contents
-	}
-	
-	convenience init?(withAppIdentifier appId: String) {
-		self.init(forIdentifier: appId)
-		
-		if !isInstalled {
-			return nil
-		}
 	}
 }

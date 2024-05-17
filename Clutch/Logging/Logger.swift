@@ -9,12 +9,12 @@
 import Foundation
 
 // TODO: when target is iOS 14 - use the new Logger thing
-var Logger = ClutchLogger.main
+var Logger = ClutchLogger.default
 
 public struct ClutchLogger {
-	static let main = ClutchLogger()
+	static let `default` = ClutchLogger()
 
-	public enum Level {
+	public enum Level: CaseIterable {
 		case info
 		case debug
 		case verbose
@@ -28,38 +28,30 @@ public struct ClutchLogger {
 	}
 
 	public func info(_ message: String) {
-		let message = "[+] \(message)"
-		log(message)
+		log("[+] \(message)")
 	}
 
 	public func warn(_ message: String) {
-		let message = "[!] \(message)"
-		log(message)
+		log("[!] \(message)")
 	}
 
 	public func error(_ message: String) {
-		let message = "[-] \(message)"
-		log(message)
+		log("[-] \(message)")
 	}
 
 	public func fatal(_ message: String) -> Never {
-		let message = "[FATAL] \(message)"
-		log(message)
+		log("[FATAL] \(message)")
 		exit(1)
 	}
 
 	// MARK: - level'd logging
 	public func verbose(_ message: String) {
 		guard level == .verbose || level == .debug else { return }
-
-		let message = "[V] \(message)"
-		log(message)
+		log("[V] \(message)")
 	}
 
-	public func debug(_ message: String) {
+	public func debug(_ message: String, file: String = #fileID, line: Int = #line) {
 		guard level == .debug else { return }
-
-		let message = "[D] \(message)"
-		log(message)
+		log("[DEBUG] [\(file):\(line)] \(message)")
 	}
 }

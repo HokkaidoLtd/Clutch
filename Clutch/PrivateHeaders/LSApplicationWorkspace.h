@@ -11,6 +11,8 @@
 
 @import Foundation;
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface LSBundleProxy : NSObject
 @property(readonly) NSString * bundleIdentifier;
 @property(readonly) NSURL * bundleURL;
@@ -62,5 +64,7 @@ typedef NS_ENUM(NSUInteger, Type) {
 - (NSArray<LSApplicationProxy *> *)blacklistedApps;
 
 @end
+
+NS_ASSUME_NONNULL_END
 
 #endif /* LSApplicationWorkspace_h */

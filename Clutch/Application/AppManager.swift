@@ -9,7 +9,7 @@
 import Foundation
 
 struct AppManager {
-	public let apps: [LSApplicationProxy]
+	let apps: [LSApplicationProxy]
 
 	enum Error: Swift.Error {
 		case invalidIndex(String)
@@ -22,32 +22,24 @@ struct AppManager {
 			.sorted(by: { $0.localizedName.lowercased() < $1.localizedName.lowercased() })
 	}
 
-//	public func lookup(term: String) throws -> LSApplicationProxy {
-//		if let app = LSApplicationProxy(withAppIdentifier: term) {
-//			return app
-//		}
-//
-//		throw Error.invalidIndex("Failed to lookup term: \(term)")
-//	}
-
-	public func lookup(terms: [String]) throws -> [LSApplicationProxy] {
-		var results = [LSApplicationProxy]()
-		for term in terms {
-			if let index = Int(term) {
-				results.append(try app(forIndex: index))
-			} else {
-				results.append(contentsOf: app(forTerm: String(term)))
+	func lookup(terms: [String]) throws -> [LSApplicationProxy] {
+		let results = try terms
+			.flatMap { term in
+				return if let index = Int(term) {
+					[try app(for: index)]
+				} else {
+					app(for: term)
+				}
 			}
-		}
 
-		if results.count == 0 {
+		guard !results.isEmpty else {
 			throw Error.noAppsFound
 		}
 
 		return results
 	}
 
-	private func app(forIndex index: Int) throws -> LSApplicationProxy {
+	private func app(for index: Int) throws -> LSApplicationProxy {
 		guard apps.indices.contains(index) else {
 			throw Error.invalidIndex("Expected index between 0 and \(apps.count - 1). Got \(index)")
 		}
@@ -55,8 +47,9 @@ struct AppManager {
 		return apps[index]
 	}
 
-	private func app(forTerm token: String) -> [LSApplicationProxy] {
-		let predicate = NSPredicate(format: "SELF.applicationIdentifier CONTAINS[c] %@", token)
-		return (apps as NSArray).filtered(using: predicate) as? [LSApplicationProxy] ?? []
+	private func app(for token: String) -> [LSApplicationProxy] {
+		apps.filter {
+			$0.applicationIdentifier.lowercased().contains(token.lowercased())
+		}
 	}
 }

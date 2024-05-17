@@ -17,46 +17,46 @@ struct ARM64FrameworkDumper: Dumper {
 		case failedToFindImageHeader
 		case failedToAllocate
 	}
-	
+
 	init(_ executable: Executable) {
 		self.executable = executable
 	}
-	
+
 	func dump(to destination: URL = URL(fileURLWithPath: "/private/var/mobile/Documents/Dumped")) throws {
 		try preflight()
 		try create(folder: destination)
-		
+
 		Logger.info("Dumping \(Executable.readable(arch: executable.arch).1) from \(executable.executableURL.lastPathComponent)")
-		
+
 		let imageCount = _dyld_image_count()
 		var foundIndex = false
 		var dyldIndex: UInt32 = 0
-		
+
 		Logger.debug("dyld image count: \(imageCount)")
-		
+
 		for idx in 0...imageCount {
 			guard let namePointer = _dyld_get_image_name(idx) else { continue }
-			
+
 			let path = String(cString: namePointer)
 			if path.hasSuffix(executable.executableURL.lastPathComponent) {
 				Logger.debug("Found image path at index: \(idx)")
 				dyldIndex = idx
-				foundIndex = true;
+				foundIndex = true
 				break
 			}
 		}
-		
+
 		guard foundIndex else {
 			throw DumperError.failed("Failed to find an image for name: \(executable.executableURL.lastPathComponent)")
 		}
-		
+
 		let slide: mach_vm_address_t = UInt64(_dyld_get_image_vmaddr_slide(dyldIndex))
 		Logger.debug("got slide: \(slide.hexString)")
-		
+
 		let commands = executable.commands
 
 		Logger.debug("code pages: \(executable.codeSignatureDirectory.directory.nCodeSlots)")
-		
+
 		// TODO: there is currently a bug where we miss multiple bytes in file :( Fix this plz
 //		var buffer = Data(capacity: executable.data.count - 1)
 //		try dump(
@@ -67,26 +67,26 @@ struct ARM64FrameworkDumper: Dumper {
 //		)
 		var buffer = FrameworkDumper.dump(
 			from: dyldIndex,
-			totalSize: UInt32(executable.data.count - 1),//commands.crypt.command.cryptoff + commands.crypt.command.cryptsize,
+			totalSize: UInt32(executable.data.count - 1), // commands.crypt.command.cryptoff + commands.crypt.command.cryptsize,
 			totalPages: executable.codeSignatureDirectory.directory.nCodeSlots,
 			fromAddress: slide
 		)
-		
+
 //		var binary = executable.data
 //		let dataStart = executable.arch.offset
 //		let dataEnd = dataStart + buffer.count + 1
 //
 //		Logger.debug("replacing range: \(dataStart.hexString)...\(dataEnd.hexString) with buffer of size: \(buffer.count)")
 //		binary.replaceSubrange(dataStart...dataEnd, with: buffer)
-		
+
 		// Patch cryptid
 		Logger.info("Patching cryptid")
 		let cryptIDOffset = commands.crypt.offset + (MemoryLayout.size(ofValue: commands.crypt.command.cmd) * 4) // points to cryptid
 //		binary[cryptIDStart] = 0
 		buffer[cryptIDOffset] = 0
-		
+
 		let outputPath = destination.appendingPathComponent(executable.executableURL.lastPathComponent)
-		
+
 		Logger.info("Writing binary to: \(outputPath.path), size: \(buffer.count)")
 		Logger.debug("original binary size: \(executable.data.count)")
 		do {
@@ -136,22 +136,22 @@ struct FrameworkLoader {
 	private let application: LSApplicationProxy
 	private let frameworks: [URL]
 	private let dylibs: [URL]
-	
+
 	init(_ application: LSApplicationProxy) {
 		self.application = application
 		self.frameworks = application.frameworks.filter({ $0.pathExtension == "framework" })
 		self.dylibs = application.frameworks.filter({ $0.pathExtension == "dylib" })
 	}
-	
+
 	func loadAll() {
 		loadAllFrameworks()
 		loadAllDylibs()
 	}
-	
+
 	private func loadAllFrameworks() {
 		Logger.info("Attempting to load all frameworks")
 		var bundles = frameworks.compactMap { Bundle.init(url: $0) }
-		
+
 		var recursionGuard = 25
 		while !bundles.isEmpty && recursionGuard > 0 {
 			Logger.debug("bundles left to load: \(bundles.count)")
@@ -160,7 +160,7 @@ struct FrameworkLoader {
 			recursionGuard -= 1
 		}
 	}
-	
+
 	private func loadAllDylibs() {
 		Logger.info("Attempting to load all dylibs")
 		dylibs.forEach { lib in
@@ -172,6 +172,17 @@ struct FrameworkLoader {
 				}
 			}
 		}
-		
+
+	}
+}
+
+// MARK: File system helpers
+extension ARM64FrameworkDumper {
+	private func create(folder: URL) throws {
+		do {
+			try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: nil)
+		} catch {
+			throw DumperError.filesystemError("Failed to create path: \(error)")
+		}
 	}
 }

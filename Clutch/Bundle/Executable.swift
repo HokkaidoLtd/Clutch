@@ -19,63 +19,59 @@ struct Executable {
 		case failedToParseLoadCommands
 		case unknownCodesignMagic(_ message: String)
 	}
-	
+
 	struct ArchHeader {
 		var offset: Int
 		var size: Int
 		var header: mach_header_64
 		var isPIEEnabled: Bool
 	}
-	
-	struct LoadCommand<Command> {
-		var offset: Int
-		var command: Command
-	}
-	
+
 	struct DumpingLoadCommands {
+		struct LoadCommand<Command> {
+			var offset: Int
+			var command: Command
+		}
+
 		var ldid: LoadCommand<linkedit_data_command>        // LC_CODE_SIGNATURE load header (for resign)
 		var crypt: LoadCommand<encryption_info_command_64>  // LC_ENCRYPTION_INFO load header (for crypt*)
 		var text: LoadCommand<segment_command_64>           // __TEXT segment
 	}
-	
+
 	struct CodeSignatureDirectory {
 		var offset: Int
 		var directory: code_directory
 	}
-	
+
 	// MARK: Variables
 	let executableURL: URL
-	
-	let shouldSwap: Bool
-	
-	let magic: UInt32
-	
-	var commands = DumpingLoadCommands(
-		ldid: .init(offset: 0, command: .init()),
-		crypt: .init(offset: 0, command: .init()),
-		text: .init(offset: 0, command: .init())
-	)
-	
-	var codeSignatureDirectory = CodeSignatureDirectory(offset: 0, directory: .init())
 
-	var arch: ArchHeader = .init(offset: 0, size: 0, header: .init(), isPIEEnabled: false)
-	
-	public let data: Data
-	
+	let shouldSwap: Bool
+
+	let magic: UInt32
+
+	let commands: DumpingLoadCommands
+
+	let codeSignatureDirectory: CodeSignatureDirectory
+
+	let arch: ArchHeader
+
+	let data: Data
+
 	// MARK: init
 	init(url: URL) throws {
 		executableURL = url
-		
+
 		do {
 			data = try Data(contentsOf: executableURL)
 		} catch {
 			Logger.error("Failed to load executable: \(error)")
 			throw Error.failedToLoad
 		}
-		
+
 		magic = data.read(at: 0)
 		Logger.verbose("magic number found: \(magic.hexString)")
-		
+
 		switch magic {
 		case MH_MAGIC, MH_CIGAM:
 			throw Error.not64Bit
@@ -83,23 +79,19 @@ struct Executable {
 			throw Error.notSingleArchitecture
 		case MH_MAGIC_64, MH_CIGAM_64:
 			shouldSwap = magic == MH_CIGAM_64
-			arch = try readHeader(at: 0)
+			arch = try Self.archHeader(at: 0, in: data)
 		default:
 			Logger.error("Found unknown magic number: \(magic.hexString)")
 			throw Error.notMachO
 		}
 
-		commands = try getDumpingLoadCommands()
-		codeSignatureDirectory = try getCodeDirectory(from: commands.ldid.command)
+		commands = try Self.parseCommands(for: arch, in: data, swap: shouldSwap)
+		codeSignatureDirectory = try Self.codeDirectory(from: arch.offset + Int(commands.ldid.command.dataoff), in: data)
 	}
-	
-	private func readHeader(at offset: Int) throws -> ArchHeader {
-		guard [MH_MAGIC_64, MH_CIGAM_64].contains(magic) else {
-			throw Error.not64Bit
-		}
-		
-		let machHeader = data.getMachHeader(at: offset)
-		
+
+	private static func archHeader(at offset: Int, in data: Data) throws -> ArchHeader {
+		let machHeader: mach_header_64 = data.read(at: offset)
+
 		return .init(
 			offset: offset,
 			size: MemoryLayout<mach_header_64>.size,
@@ -107,74 +99,85 @@ struct Executable {
 			isPIEEnabled: (machHeader.flags & UInt32(MH_PIE)) != 0
 		)
 	}
-	
-	private func swap(_ arg: UInt32) -> UInt32 {
-		shouldSwap ? _OSSwapInt32(arg) : arg
+
+	private static func swap(_ arg: UInt32, _ shouldSwap: Bool) -> UInt32 {
+		print("shouldSwap? \(shouldSwap). \(shouldSwap ? _OSSwapInt32(arg) : arg)")
+		return shouldSwap ? _OSSwapInt32(arg) : arg
 	}
-	
-	private func getDumpingLoadCommands() throws -> DumpingLoadCommands {
+
+	private static func parseCommands(for arch: ArchHeader, in data: Data, swap shouldSwap: Bool) throws -> DumpingLoadCommands {
 		Logger.info("Parsing load commands")
-		
-		var ldid  = commands.ldid
-		var crypt = commands.crypt
-		var text  = commands.text
+
+		typealias Command = DumpingLoadCommands.LoadCommand
+
+		var ldid: Command<linkedit_data_command>?
+		var crypt: Command<encryption_info_command_64>?
+		var text: Command<segment_command_64>?
+
 		var startOfCommand = MemoryLayout<mach_header_64>.size
-		
-		for _ in 0..<swap(arch.header.ncmds) {
-			let cmd: Int32 = data.read(at: startOfCommand)
-			let cmdsize: Int32 = data.read(at: startOfCommand + MemoryLayout<UInt32>.size)
-			
+
+		Logger.verbose("ncmds: \(Self.swap(arch.header.ncmds, shouldSwap))")
+
+		for _ in 0..<Self.swap(arch.header.ncmds, shouldSwap) {
+			let cmd: UInt32 = data.read(at: startOfCommand)
+			let cmdsize: UInt32 = data.read(at: startOfCommand + MemoryLayout<UInt32>.size)
+
+			Logger.verbose("cmd: \(cmd), cmdsize: \(cmdsize)")
+
 			switch cmd {
-			case LC_CODE_SIGNATURE:
-				ldid.command = data.getLinkeditDataCommand(at: startOfCommand)
-				ldid.offset = startOfCommand
-				
-				Logger.verbose("FOUND CODE SIGNATURE: dataoff \(ldid.command.dataoff) | datasize \(ldid.command.datasize)")
-			case LC_ENCRYPTION_INFO_64:
-				crypt.command = data.getCryptCommand(at: startOfCommand)
-				crypt.offset = startOfCommand
-				
-				Logger.verbose("FOUND ENCRYPTION INFO: cryptoff \(crypt.command.cryptoff) | cryptsize \(crypt.command.cryptsize) | cryptid \(crypt.command.cryptid)")
-			case LC_SEGMENT_64:
-				let segment = data.getSegementCommand(at: startOfCommand)
-				
+			case UInt32(LC_CODE_SIGNATURE):
+				ldid = .init(offset: startOfCommand, command: data.read(at: startOfCommand))
+				Logger.verbose("FOUND CODE SIGNATURE: dataoff \(ldid!.command.dataoff) | datasize \(ldid!.command.datasize)")
+			case UInt32(LC_ENCRYPTION_INFO_64):
+				crypt = .init(offset: startOfCommand, command: data.read(at: startOfCommand))
+				Logger.verbose("FOUND ENCRYPTION INFO: cryptoff \(crypt!.command.cryptoff) | cryptsize \(crypt!.command.cryptsize) | cryptid \(crypt!.command.cryptid)")
+			case UInt32(LC_SEGMENT_64):
+				let segment: segment_command_64 = data.read(at: startOfCommand)
+
 				let segname = withUnsafePointer(to: segment.segname) {
 					$0.withMemoryRebound(to: UInt8.self, capacity: MemoryLayout.size(ofValue: segment.segname)) {
 						String(cString: $0)
 					}
 				}
-				
+
 				if segname == "__TEXT" {
 					Logger.verbose("FOUND __TEXT SEGMENT")
-					text.command = segment
-					text.offset = startOfCommand
+					text = .init(offset: startOfCommand, command: segment)
 				}
 			default:
 				break
 			}
-			
+
 			startOfCommand += Int(cmdsize)
-			
-			if crypt.command.cmdsize != 0 && ldid.command.cmdsize != 0 && text.command.cmdsize != 0 {
+
+			if let crypt, let ldid, let text {
+				// If we've found everything, break out of the search
+				Logger.verbose("breaking out of search - \(crypt) \(ldid), \(text)")
 				break
 			}
 		}
-		
+
+		guard let crypt, let ldid, let text else {
+			Logger.error("dumping binary: some load commands were not found")
+			Logger.error("crypt: \(String(describing: crypt)), signature: \(String(describing: ldid)), __text: \(String(describing: text))")
+			throw Error.failedToParseLoadCommands
+		}
+
 		guard crypt.command.cmdsize != 0 || ldid.command.cmdsize != 0 || text.command.cmdsize != 0 else {
 			Logger.error("dumping binary: some load commands were not found")
 			Logger.error("crypt: \(crypt.command.cmdsize != 0), signature: \(ldid.command.cmdsize != 0), __text: \(text.command.cmdsize != 0)")
 			throw Error.failedToParseLoadCommands
 		}
-		
+
 		return .init(ldid: ldid, crypt: crypt, text: text)
 	}
-	
-	private func getCodeDirectory(from ldid: linkedit_data_command) throws -> CodeSignatureDirectory {
+
+	private static func codeDirectory(from offset: Int, in data: Data) throws -> CodeSignatureDirectory {
 		Logger.info("Parsing code signing blobs")
-		
-		var blobStart    = arch.offset + Int(ldid.dataoff)
-		let codesignblob = data.getSuperBlob(at: blobStart)
-		
+
+		var blobStart = offset
+		let codesignblob: super_blob = data.read(at: blobStart)
+
 		// check the codesign blob for validity
 		guard codesignblob.magic == CSMAGIC_EMBEDDED_SIGNATURE else {
 			Logger.error("codesign magic: \(codesignblob.magic.hexString) is unrecognized")
@@ -184,22 +187,22 @@ struct Executable {
 		var codeSignBlobStart = 0
 		var directory = code_directory()
 		blobStart += MemoryLayout.size(ofValue: codesignblob)
-		
+
 		for _ in 0..<codesignblob.count {
-			let blobIndex = data.getBlobIndex(at: blobStart)
+			let blobIndex: blob_index = data.read(at: blobStart)
 			blobStart += MemoryLayout.size(ofValue: blobIndex)
 			Logger.debug("blob: \(blobIndex)")
-			
+
 			if blobIndex.type == CSSLOT_CODEDIRECTORY {
-				codeSignBlobStart = arch.offset + Int(ldid.dataoff) + Int(blobIndex.offset)
-				directory = data.getCodeDirectory(at: codeSignBlobStart)
+				codeSignBlobStart = offset + Int(blobIndex.offset)
+				directory = data.read(at: codeSignBlobStart)
 				Logger.debug("directory: \(directory)")
 				Logger.verbose("Found CSSLOT_CODEDIRECTORY")
-				
+
 				break
 			}
 		}
-		
+
 		return .init(offset: blobStart, directory: directory)
 	}
 
