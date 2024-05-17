@@ -1,0 +1,4 @@
+module ASLRDisabler {
+	header "ASLRDisabler.h"
+	export *
+}

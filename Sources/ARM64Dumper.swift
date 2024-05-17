@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import ASLRDisabler
 import CryptoKit
 
 struct ARM64Dumper: Dumper {

@@ -1,0 +1,4 @@
+module PrivateMobileCoreServices {
+	header "LSApplicationWorkspace.h"
+	export *
+}

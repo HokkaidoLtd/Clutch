@@ -8,6 +8,8 @@
 
 import Foundation
 import MachO.loader
+import PrivateMobileCoreServices
+import FrameworkDumper
 
 // TODO: TEST THE FUCK OUTTA ALL OF THIS
 struct ARM64FrameworkDumper: Dumper {

@@ -1,0 +1,4 @@
+module FrameworkDumper {
+	header "FrameworkDumper.h"
+	export *
+}

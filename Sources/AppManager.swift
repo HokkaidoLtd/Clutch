@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PrivateMobileCoreServices
 
 struct AppManager {
 	let apps: [LSApplicationProxy]

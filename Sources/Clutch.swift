@@ -9,7 +9,7 @@
 import Foundation
 import CoreServices
 import ArgumentParser
-import os
+import PrivateMobileCoreServices
 
 extension ClutchLogger.Level: EnumerableFlag {
 	static public func help(for value: ClutchLogger.Level) -> ArgumentHelp? {

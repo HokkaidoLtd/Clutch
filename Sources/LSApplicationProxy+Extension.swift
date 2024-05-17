@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PrivateMobileCoreServices
 
 extension LSBundleProxy {
 	var bundleExecutableURL: URL {
